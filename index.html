@@ -454,7 +454,7 @@
             <div class="cg">
                 <div class="clabel">River Width <span class="sym">d</span></div>
                 <div class="num-row">
-                    <input type="number" class="num-input" id="nW" min="10" max="200" step="1" value="50">
+                    <input type="text" inputmode="decimal" class="num-input" id="nW" value="50">
                     <span class="num-unit">m</span>
                 </div>
                 <input type="range" id="sW" min="10" max="200" value="50" step="1">
@@ -463,7 +463,7 @@
             <div class="cg">
                 <div class="clabel">Current Speed <span class="sym">v<sub>c</sub></span></div>
                 <div class="num-row">
-                    <input type="number" class="num-input" id="nC" min="0" max="15" step="0.1" value="3">
+                    <input type="text" inputmode="decimal" class="num-input" id="nC" value="3">
                     <span class="num-unit">m/s</span>
                 </div>
                 <input type="range" id="sC" min="0" max="15" value="3" step="0.1">
@@ -473,7 +473,7 @@
             <div class="cg">
                 <div class="clabel">Boat Speed <span class="sym">v<sub>b</sub></span></div>
                 <div class="num-row">
-                    <input type="number" class="num-input" id="nB" min="0.5" max="20" step="0.1" value="5">
+                    <input type="text" inputmode="decimal" class="num-input" id="nB" value="5">
                     <span class="num-unit">m/s</span>
                 </div>
                 <input type="range" id="sB" min="0.5" max="20" value="5" step="0.1">
@@ -485,7 +485,7 @@
                     <span class="vbadge" id="dA">0°</span>
                 </div>
                 <div class="num-row">
-                    <input type="number" class="num-input" id="nA" min="-75" max="75" step="0.1" value="0">
+                    <input type="text" inputmode="decimal" class="num-input" id="nA" value="0">
                     <span class="num-unit">°</span>
                 </div>
                 <input type="range" id="sA" min="-75" max="75" value="0" step="0.1">
@@ -615,25 +615,55 @@
                 el.style.setProperty('--pct', p + '%');
             }
 
-            /* ── Bidirectional slider ↔ number-input sync ── */
-            const pairs = [[sW, nW], [sC, nC], [sB, nB], [sA, nA]];
+            /* ── Bidirectional slider ↔ text-input sync ──
+               Each pair: [slider, textInput, min, max]
+               - While typing: accept partial input like "20.", "-", "-." without disrupting
+               - On valid number: update slider + re-render immediately
+               - On blur: clamp to [min,max] and clean up display
+            */
+            const pairs = [
+                [sW, nW, 10, 200],
+                [sC, nC, 0, 15],
+                [sB, nB, 0.5, 20],
+                [sA, nA, -75, 75],
+            ];
 
-            pairs.forEach(([slider, numIn]) => {
-                // Slider moved → update number input + fill
+            function isPartial(str) {
+                // Allow interim states the user is still typing: "-", ".", "20.", "-.", "-20."
+                return /^-?\.?$|^-?\d+\.$/.test(str);
+            }
+
+            pairs.forEach(([slider, numIn, lo, hi]) => {
+                // Slider moved → update text input + fill
                 slider.addEventListener('input', () => {
                     numIn.value = parseFloat(slider.value);
                     sliderFill(slider);
                 });
-                // Number typed → clamp, update slider + fill, trigger sim update
+
+                // Text typed → parse, skip if still partial, else update slider + sim
                 numIn.addEventListener('input', () => {
-                    let v = parseFloat(numIn.value);
+                    const raw = numIn.value.trim();
+                    if (raw === '' || isPartial(raw)) return;   // still typing, wait
+                    const v = parseFloat(raw);
                     if (isNaN(v)) return;
-                    v = Math.max(parseFloat(slider.min), Math.min(parseFloat(slider.max), v));
-                    slider.value = v;
+                    const clamped = Math.max(lo, Math.min(hi, v));
+                    slider.value = clamped;
                     sliderFill(slider);
                     if (S.running || S.done) doReset();
                     else { readInputs(); render(); }
                 });
+
+                // Blur → clean up display (clamp + remove trailing dot)
+                numIn.addEventListener('blur', () => {
+                    let v = parseFloat(numIn.value);
+                    if (isNaN(v)) v = parseFloat(slider.value);
+                    v = Math.max(lo, Math.min(hi, v));
+                    numIn.value = v;
+                    slider.value = v;
+                    sliderFill(slider);
+                    if (!S.running && !S.done) { readInputs(); render(); }
+                });
+
                 // Init fill
                 sliderFill(slider);
             });
